@@ -33,6 +33,7 @@ builds it with cargo when Rust is installed. `DEVICEDOCK_BACKEND=node` switches 
 devicedock serve                     # the backend (what ./devicedock.sh starts)
 devicedock open                      # mint a one-time login link and open Chrome
 devicedock sandbox start|stop|clean  # the hardened sandbox container
+devicedock sandbox mounts            # host folders mounted into the sandbox; also: sandbox mount [--ro]|unmount <folder>
 devicedock login-codex               # codex login with the OAuth callback relay
 ```
 
@@ -143,6 +144,25 @@ The Docker bridge listens inside the container and is published only to Mac loop
 Docker uses UID 1000, dropped capabilities, no-new-privileges, a read-only root, a limited `/tmp`, 2 CPUs, 2 GiB memory, a 256-process limit, and separate workspace/home volumes. Network access remains available inside the container for coding and agent services. No host USB device access or privileged mode is used.
 
 The device broker caps messages at 64 KiB, serial chunks at 16 KiB, the receive queue at 64 KiB per lease, devices at 32, pending operations at 64, browser WebSockets at eight, and monitor history at 150 entries. PTY scrollback is bounded, with a 30-second process retention window after disconnect. Device sharing is revoked immediately when the owning browser WebSocket disconnects and is never silently restored.
+
+## Mounting a project folder from the host
+
+By default the sandbox sees only its own Docker volumes. To work on a checkout that lives on your computer (macOS or Linux) without copying it in and out:
+
+```sh
+./devicedock.sh mount ~/src/contiki-ng      # appears in the sandbox as /workspace/contiki-ng
+./devicedock.sh mount --ro ~/src/board-docs # read-only: the sandbox can read it but not change anything
+./devicedock.sh mounts                      # list mounted folders and whether each is read-only
+./devicedock.sh unmount contiki-ng          # stop mounting it; the folder itself is untouched
+```
+
+Use `--ro` for documentation, configuration and other reference material. A read-only folder cannot be modified from the sandbox, so nothing in it can be turned against your computer; builds that write into the folder fail. Mounting a folder again switches its mode.
+
+Read-only is not private: the sandbox has internet access, so anything it can read it can also send elsewhere. Do not mount folders that hold passwords, tokens or keys. When you add a folder, files that look like credentials are listed and you are asked before it is mounted. You are also asked before a read-only folder becomes read-write, and before a change recreates a running sandbox.
+
+On Linux with Docker Engine the sandbox user (UID 1000) accesses the folder directly, without the ownership translation Docker Desktop does. A read-write mount therefore needs your own UID to be 1000 (the usual first user), and a read-only mount needs the files to be readable by others. Mounts are verified on macOS with Docker Desktop; Linux is untested.
+
+The list is kept in `.runtime/mounts.json`. Changing it recreates the sandbox container (agent terminals end; volumes and logins are kept). Folders must be inside your home folder and are refused if they look like credential or config directories; inside the DeviceDock folder only a separate git checkout is accepted. The sandbox can modify everything in a read-write folder, including `.git/config` and hooks: see [SECURITY.md](SECURITY.md).
 
 ## Shutdown and credential removal
 

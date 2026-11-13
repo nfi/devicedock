@@ -2,6 +2,7 @@
 //!   serve (default)            the loopback web server + broker (apps/server/index.ts)
 //!   open                       mint a fresh one-time login link and open it in Chrome (scripts/open.mjs)
 //!   sandbox start|stop|clean   manage the hardened sandbox container (scripts/sandbox.ts)
+//!   sandbox mounts | mount [--ro] <folder> | unmount <folder>   host folders bind-mounted at /workspace/<name>
 //!   login-codex                run `codex login` in the sandbox with the OAuth callback relay (scripts/login-relay.ts)
 //! Files live in ./.runtime and ./dist relative to the working directory, exactly like the Node backend.
 mod app;
@@ -10,6 +11,7 @@ mod protocol;
 mod relay;
 mod sandbox;
 mod terminals;
+mod workspace;
 
 use std::process::ExitCode;
 
@@ -30,12 +32,16 @@ async fn main() -> ExitCode {
         ["sandbox", "clean"] => sandbox::clean_sandbox()
             .await
             .map(|_| println!("Container removed. Volumes preserved. See README for explicit data removal.")),
+        ["sandbox", "mounts"] => sandbox::list_mounts(),
+        ["sandbox", "mount", "--ro", folder] => sandbox::add_mount(folder, true).await,
+        ["sandbox", "mount", folder] if !folder.starts_with("--") => sandbox::add_mount(folder, false).await,
+        ["sandbox", "unmount", folder] => sandbox::remove_mount(folder).await,
         ["login-codex"] => relay::login_codex().await,
         ["--version"] | ["version"] => {
             println!("devicedock {}", env!("CARGO_PKG_VERSION"));
             Ok(())
         }
-        _ => Err("usage: devicedock [serve | open | sandbox start|stop|clean | login-codex | --version]".into()),
+        _ => Err("usage: devicedock [serve | open | sandbox start|stop|clean|mounts | sandbox mount [--ro] <folder> | sandbox unmount <folder> | login-codex | --version]".into()),
     };
     match r {
         Ok(()) => ExitCode::SUCCESS,

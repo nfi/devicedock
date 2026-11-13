@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# DeviceDock control script: ./devicedock.sh {console (default)|start|stop|restart|status|open|logs|login|build|test|clean}
+# DeviceDock control script: ./devicedock.sh {console (default)|start|stop|restart|status|open|logs|login|build|test|clean|mounts|mount|unmount}
 set -euo pipefail
+START_DIR=$PWD
 cd "$(dirname "$0")"
 PORT="${PORT:-47831}"
 RUN=.runtime; PIDFILE=$RUN/backend.pid; LOG=$RUN/backend.log
@@ -35,6 +36,8 @@ fi
 need_node() { command -v npm >/dev/null || die "this needs Node.js (only for developing the web UI)"; [ -d node_modules ] || npm ci; }
 ddctl() { if [ -n "$BIN" ]; then "$BIN" "$@"; else case "$1" in
   sandbox) npm run -s "sandbox:$2" ;; open) npm run -s open ;; login-codex) npm run -s login:codex ;; esac; fi; }
+# Sandbox subcommands that take arguments (mounts, mount [--ro] <folder>, unmount <folder>), on whichever backend is in use.
+sandbox_ctl() { if [ -n "$BIN" ]; then "$BIN" sandbox "$@"; else need_node; node_modules/.bin/tsx scripts/sandbox.ts "$@"; fi; }
 
 backend_pid() {
   # PID listening on our port, only if it is this project's backend.
@@ -217,5 +220,12 @@ case "${1:-console}" in
   pull)    cmd_pull ;;
   test)    run_tests ;;
   clean)   cmd_clean ;;
-  *) echo "usage: $0 {console (default)|start|stop|restart|restart-backend|status|open|logs|login <codex|claude|opencode>|build|pull|test|clean}  (DEVICEDOCK_VARIANT=base|contiki|esp32|full, default contiki)"; exit 1 ;;
+  mounts)  sandbox_ctl mounts ;;
+  mount|unmount) cmd=$1; shift; ro=""
+           if [ "$cmd" = mount ] && [ "${1:-}" = --ro ]; then ro=--ro; shift; fi
+           [ $# -eq 1 ] || die "usage: $0 mount [--ro] <folder> | unmount <folder>"
+           case "$1" in /*) dir=$1 ;; *) dir=$START_DIR/$1 ;; esac
+           [ "$cmd" = unmount ] && [ ! -d "$dir" ] && dir=$1
+           sandbox_ctl "$cmd" $ro "$dir" ;;
+  *) echo "usage: $0 {console (default)|start|stop|restart|restart-backend|status|open|logs|login <codex|claude|opencode>|build|pull|test|clean|mounts|mount [--ro] <folder>|unmount <folder>}  (DEVICEDOCK_VARIANT=base|contiki|esp32|full, default contiki)"; exit 1 ;;
 esac
