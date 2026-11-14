@@ -78,9 +78,25 @@ end_stray_codex() {
   docker exec $CONTAINER sh -c 'for p in /proc/[0-9]*; do case "$(tr "\\0" " " < $p/cmdline 2>/dev/null)" in */bin/codex*) kill ${p#/proc/} 2>/dev/null && echo "Ended unauthenticated codex (pid ${p#/proc/})";; esac; done'
 }
 
+# The image is built with the agent versions pinned in sandbox/Dockerfile. DEVICEDOCK_AGENT_VERSIONS=latest builds
+# with the latest released versions instead, looked up in the npm registry (the pinned one if a lookup fails).
+npm_latest() {
+  curl -fsS -m 10 "https://registry.npmjs.org/$1/latest" 2>/dev/null | grep -o '"version":"[^"]*"' | head -1 | cut -d'"' -f4 \
+    | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' || true
+}
 build_image() {
   [ -f sandbox/Dockerfile ] || die "building the image needs a source checkout; download it instead (p)"
-  say "Building the sandbox image ($VARIANT) locally"; docker build --target "$VARIANT" -t $IMAGE -f sandbox/Dockerfile .; }
+  local args=() pair v
+  if [ "${DEVICEDOCK_AGENT_VERSIONS:-pinned}" = latest ]; then
+    for pair in CLAUDE_CODE_VERSION=@anthropic-ai/claude-code CODEX_VERSION=@openai/codex OPENCODE_VERSION=opencode-ai; do
+      v=$(npm_latest "${pair#*=}")
+      if [ -n "$v" ]; then args+=(--build-arg "${pair%%=*}=$v"); echo "  ${pair#*=} $v"
+      else echo "  ${pair#*=}: could not look up the latest version; using the one in sandbox/Dockerfile"; fi
+    done
+  fi
+  say "Building the sandbox image ($VARIANT) locally"
+  docker build ${args[@]+"${args[@]}"} --target "$VARIANT" -t $IMAGE -f sandbox/Dockerfile .
+}
 # Download the published image for VARIANT and use it as the local sandbox image.
 cmd_pull() {
   need_docker; say "Downloading $REMOTE:$VARIANT"

@@ -190,6 +190,10 @@ They live in a writable npm prefix in the home volume (`~/.devicedock/agents`), 
 Codex and OpenCode are copied there from the image on first start; Claude Code is installed from npm at the pinned
 version (its licence does not allow shipping it in the image).
 
+- **Newer agents in an image you build yourself:** `DEVICEDOCK_AGENT_VERSIONS=latest ./devicedock.sh build` (or
+  `i` in a console started that way) builds the image with the latest released version of each agent, looked up
+  in the npm registry, in place of the pinned ones. Those versions are not the ones we test, and a new agent
+  release then rebuilds most of the image.
 - **Let the agents update themselves:** start once with `DEVICEDOCK_AGENT_UPDATES=on ./devicedock.sh`, then `rs`.
   The setting is remembered in `.runtime/agent-updates` and used every time the sandbox is created, from the page,
   `rs` or an upgrade; `DEVICEDOCK_AGENT_UPDATES=off` turns it off again. `./devicedock.sh status` shows it. With

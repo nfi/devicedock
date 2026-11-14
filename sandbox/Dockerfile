@@ -39,7 +39,6 @@ RUN cargo build --release --locked --manifest-path server-rs/Cargo.toml \
 # versions pinned here unless the user turns updates on (DEVICEDOCK_AGENT_UPDATES=on).
 # ---------------------------------------------------------------------------------------------------------------------
 FROM node:22-bookworm-slim AS base
-ARG CLAUDE_CODE_VERSION=2.1.319
 RUN apt-get update && apt-get install -y --no-install-recommends bash git python3 build-essential ca-certificates procps python3-venv \
       gcc-arm-none-eabi libnewlib-arm-none-eabi libusb-1.0-0 libjim0.81 curl && rm -rf /var/lib/apt/lists/*
 COPY --from=openocd /opt/openocd /opt/openocd
@@ -49,7 +48,11 @@ RUN ln -s /opt/cooja-ng/bin/cngsim /usr/local/bin/cngsim
 WORKDIR /opt/devicedock
 COPY package*.json ./
 COPY scripts/prepare-pty.mjs ./scripts/prepare-pty.mjs
-RUN npm ci && npm install -g --prefix /opt/agent @openai/codex@0.167.0 opencode-ai@1.19.5 && npm cache clean --force
+# Agent versions: the pinned ones, which the published images have. They are build arguments so that
+# DEVICEDOCK_AGENT_VERSIONS=latest ./devicedock.sh build can pass the latest released versions instead.
+ARG CODEX_VERSION=0.167.0
+ARG OPENCODE_VERSION=1.19.5
+RUN npm ci && npm install -g --prefix /opt/agent "@openai/codex@$CODEX_VERSION" "opencode-ai@$OPENCODE_VERSION" && npm cache clean --force
 RUN python3 -m venv /opt/venv && /opt/venv/bin/pip install --no-cache-dir esptool pyserial mpremote
 ENV PATH="/opt/venv/bin:$PATH"
 # Login shells (bash -l) reset PATH, so export it from profile.d as well.
@@ -60,6 +63,7 @@ COPY --from=devicedock-rs /out/devicedock /opt/devicedock/bin/devicedock
 # esptool checks first that a shared real board is in autonomous mode (see sandbox/esptool-preflight.py).
 RUN for f in esptool esptool.py; do install -m 755 /opt/devicedock/sandbox/esptool-preflight.py /opt/venv/bin/$f; done
 # claude, codex and opencode start through one wrapper that keeps them in the home volume, where they can update.
+ARG CLAUDE_CODE_VERSION=2.1.319
 RUN install -m 755 /opt/devicedock/sandbox/agent-wrapper.sh /usr/local/bin/devicedock-agent \
  && for b in claude codex opencode; do ln -s devicedock-agent /usr/local/bin/$b; done \
  && echo "$CLAUDE_CODE_VERSION" > /etc/devicedock-claude-version
